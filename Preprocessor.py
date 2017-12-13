@@ -1,65 +1,78 @@
 #coding:utf-8
-import codecs
-import json
+import codecs  # 文件处理模块
+import json  # JSON(JavaScript Object Notation) 是一种轻量级的数据交换格式，易于人阅读和编写
 import math
-import os
-import jieba
-import nltk
-import DataSpider
+import os  # 文件目录操作
+import jieba  # 结巴分词分为三种模式：精确模式（默认）、全模式和搜索引擎模式
+import nltk  # 自然语言处理用库
+import DataSpider  # 爬虫
 
 
 class Preprocessor:
     def __init__(self):
         self.features = []
 
+# 获取数据
     def get_new_data(self):
         DataSpider.DataSpider().get_data()
 
-    def process_data(self, pos_file='./corpus/pos.txt', neg_file='./corpus/neg.txt', feature_num=30):
+    def process_data(self, pos_file='./corpus/pos.txt', neg_file='./corpus/neg.txt', feature_num=40):
         if not os.path.exists(pos_file) or not os.path.exists(neg_file):
             self.get_new_data()
         # process the data
-        stopwords = self.loan_stopwords()
-        pos = self.loan_txt(pos_file)
-        neg = self.loan_txt(neg_file)
-        pos_seg_list = self.get_seg_list(pos, stopwords)
-        neg_seg_list = self.get_seg_list(neg, stopwords)
-        pos_freq_dist = self.get_freq_dist(pos_seg_list)
-        neg_freq_dist = self.get_freq_dist(neg_seg_list)
-        pos_words_set = self.get_words_set(pos_seg_list)
-        neg_words_set = self.get_words_set(neg_seg_list)
-        pos_words_num = self.compute_words_num(pos_seg_list)
-        neg_words_num = self.compute_words_num(neg_seg_list)
-        total_seg_list = []
+        stopwords = self.loan_stopwords()  # 停止词表
+        pos = self.loan_txt(pos_file)  # 加载好评
+        neg = self.loan_txt(neg_file)  # 加载差评
+        pos_seg_list = self.get_seg_list(pos, stopwords)  # 获取分词表
+        neg_seg_list = self.get_seg_list(neg, stopwords)  # 获取分词表
+
+
+        pos_freq_dist = self.get_freq_dist(pos_seg_list)  # 获取词频
+        neg_freq_dist = self.get_freq_dist(neg_seg_list)  # 获取词频
+        pos_words_set = self.get_words_set(pos_seg_list)  #
+        neg_words_set = self.get_words_set(neg_seg_list)  #
+        pos_words_num = self.compute_words_num(pos_seg_list)  # 词数
+        neg_words_num = self.compute_words_num(neg_seg_list)  # 词数
+
+        # print(pos_words_num, neg_words_num)
+        total_seg_list = []  # 总集
         for each in pos_seg_list:
             total_seg_list.append(each)
         for each in neg_seg_list:
             total_seg_list.append(each)
-        # pos_words_tfidf = self.compute_TF_IDF(pos_words_set, pos_freq_dist, pos_words_num, total_seg_list)
-        # neg_words_tfidf = self.compute_TF_IDF(neg_words_set, neg_freq_dist, neg_words_num, total_seg_list)
-        pos_words_PMI = self.PMI(pos_words_set, pos_seg_list, len(pos_seg_list) / len(total_seg_list))
-        neg_words_PMI = self.PMI(neg_words_set, neg_seg_list, len(neg_seg_list) / len(total_seg_list))
+
+        pos_words_tfidf = self.compute_TF_IDF(pos_words_set, pos_freq_dist, pos_words_num, total_seg_list)
+        neg_words_tfidf = self.compute_TF_IDF(neg_words_set, neg_freq_dist, neg_words_num, total_seg_list)
+        pos_words_tfidf = self.sort_by_value(pos_words_tfidf)
+        neg_words_tfidf = self.sort_by_value(neg_words_tfidf)
+
+        # pos_words_PMI = self.PMI(pos_words_set, pos_seg_list, len(pos_seg_list) / len(total_seg_list))  # 计算每一个词的PMI
+        # neg_words_PMI = self.PMI(neg_words_set, neg_seg_list, len(neg_seg_list) / len(total_seg_list))  # 计算每一个词的PMI
+        # pos_words_PMI = self.sort_by_value(pos_words_PMI)
+        # neg_words_PMI = self.sort_by_value(neg_words_PMI)
+
         # pos_words_Chi_square = self.Chi_square(pos_words_set, pos_seg_list, total_seg_list)
         # neg_words_Chi_square = self.Chi_square(neg_words_set, neg_seg_list, total_seg_list)
-        # pos_words_tfidf = self.sort_by_value(pos_words_tfidf)
-        # neg_words_tfidf = self.sort_by_value(neg_words_tfidf)
-        pos_words_PMI = self.sort_by_value(pos_words_PMI)
-        neg_words_PMI = self.sort_by_value(neg_words_PMI)
         # pos_words_Chi_square = self.sort_by_value(pos_words_Chi_square)
         # neg_words_Chi_square = self.sort_by_value(neg_words_Chi_square)
-        self.features = self.feature_list(pos_words_PMI, feature_num, neg_words_PMI, feature_num)
+        #self.pos = pos_words_Chi_square
+        #self.neg = neg_words_Chi_square
+
+        self.features = self.feature_list(pos_words_tfidf, feature_num, neg_words_tfidf, feature_num)
         self.save_feature_model(self.features)
         self.create_train_csv(self.features, pos_freq_dist, neg_freq_dist)
+        return len(pos_seg_list) / len(total_seg_list)
 
-    def save_feature_model(self, features, filename='./model/feature.json'):
+    def save_feature_model(self, features, filename='./model/TD-TDF_40.json'):
         with codecs.open(filename, 'w', 'utf-8') as f:
             f.write(json.dumps(features, ensure_ascii=False))
             f.close()
 
-    def load_feature_model(self, filename='./model/feature.json'):
+    def load_feature_model(self, filename='./model/TD-TDF_40.json'):
         with codecs.open(filename, 'r', 'utf-8') as f:
             self.features = json.loads(f.read())
 
+    ###################################
     def sentence2vec(self, sentence):
         if len(self.features) == 0:
             self.load_feature_model()
@@ -116,17 +129,18 @@ class Preprocessor:
         for each in seg_list:
             total += len(each)
         return total
-
+    # pos_words_tfidf = self.compute_TF_IDF(pos_words_set, pos_freq_dist, pos_words_num, total_seg_list)
+    # 好评词集合 好评词频 好评词总数 总词典
     def compute_TF_IDF(self, word_set, freq_dist, words_num, total_seg_list):
         word_dist = {}
         for word in word_set:
             tf = 0
-            for each in freq_dist:
+            for each in freq_dist:  # 在好/差评中每一个word统计词频并除以总词数
                 tf += each[word]
             tf /= words_num
-            total_num = len(total_seg_list)
+            total_num = len(total_seg_list)  # 计算总词数
             exist_num = 0
-            for each in total_seg_list:
+            for each in total_seg_list:  # 在总评论中统计词频
                 if word in each:
                     exist_num += 1
                     continue
@@ -135,8 +149,8 @@ class Preprocessor:
         return word_dist
 
     def sort_by_value(self, d):
-        items=d.items()
-        backitems=[[v[1], v[0]] for v in items]
+        items = d.items()
+        backitems = [[v[1], v[0]] for v in items]
         backitems.sort(reverse=True)
         return [backitems[i] for i in range(0, len(backitems))]
 
@@ -149,7 +163,7 @@ class Preprocessor:
         return features
 
     def create_train_csv(self, features, pos_freq_dist, neg_freq_dist):
-        with codecs.open('./corpus/train.csv', 'w', 'utf-8') as f:
+        with codecs.open('./corpus/TD-TDF_40.csv', 'w', 'utf-8') as f:
             f.write(','.join(features) + ',sentiment\n')
             pos_words_vec = self.words2vec(features, pos_freq_dist)
             neg_words_vec = self.words2vec(features, neg_freq_dist)
@@ -159,6 +173,7 @@ class Preprocessor:
                 f.write(','.join(each) + ',-1\n')
             f.close()
 
+    ###################################
     def words2vec(self, features, freq_dist):
         word_vec = []
         for sentence in freq_dist:
@@ -168,6 +183,11 @@ class Preprocessor:
             word_vec.append(local_vec)
         return word_vec
 
+        # pos_words_PMI = self.PMI(pos_words_set, pos_seg_list, len(pos_seg_list) / len(total_seg_list))  # 计算每一个词的PMI
+        # neg_words_PMI = self.PMI(neg_words_set, neg_seg_list, len(neg_seg_list) / len(total_seg_list))  # 计算每一个词的PMI
+        # pos_words_PMI = self.sort_by_value(pos_words_PMI)
+        # neg_words_PMI = self.sort_by_value(neg_words_PMI)
+
     def PMI(self, words_set, seg_list, prob):
         PMI_words = {}
         for each in words_set:
@@ -176,7 +196,7 @@ class Preprocessor:
                 if each in sent:
                     occur += 1
             word_prob = occur / len(seg_list)
-            PMI_words[each] = math.log(word_prob / prob)
+            PMI_words[each] = math.log(word_prob / prob)  # 有问题
         return PMI_words
 
     def Chi_square(self, words, seg_list, total_seg_list):
@@ -201,3 +221,6 @@ class Preprocessor:
 if __name__ == '__main__':
     processor = Preprocessor()
     processor.process_data()
+    print(processor.process_data())
+    # print(processor.neg)
+
